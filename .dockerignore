@@ -1,0 +1,12 @@
+# Keeps the Docker build context (and therefore image layers) small - none of this
+# needs to exist inside the container; the app copies source via `COPY . .` in the
+# Dockerfile, and the API/worker containers also bind-mount the repo at runtime anyway.
+.venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.env

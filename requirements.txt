@@ -1,0 +1,44 @@
+# --- Web framework & server ---
+fastapi==0.115.0            # HTTP API framework: routes, request/response validation, auto OpenAPI docs
+uvicorn[standard]==0.30.6   # ASGI server that actually runs the FastAPI app
+
+# --- Database (Postgres + pgvector) ---
+sqlalchemy==2.0.35          # ORM + query builder used for all Postgres access (models, sessions, raw SQL for vector search)
+alembic==1.13.2             # Database migration tool that tracks/applies schema changes (alembic/versions/*.py)
+psycopg[binary]==3.2.1      # PostgreSQL driver (the actual TCP/wire client SQLAlchemy talks through)
+pgvector==0.3.4             # SQLAlchemy/psycopg integration for Postgres' pgvector extension (vector(1536) columns, cosine distance)
+
+# --- Cache & background jobs ---
+redis==5.0.8                # Client for Redis: response/embedding caching, rate limiting, conversation-context storage
+celery==5.4.0                # Distributed task queue: background Gmail/Calendar/Drive sync jobs, async long-running orchestrations
+
+# --- LLM provider ---
+openai==1.51.0               # OpenAI SDK: chat completions (intent classification, response synthesis) + embeddings API
+
+# --- Google Workspace APIs ---
+google-api-python-client==2.147.0   # Generated client for calling Gmail/Calendar/Drive REST APIs
+google-auth==2.34.0                 # Core Google auth primitives (Credentials objects, token refresh)
+google-auth-oauthlib==1.2.1         # OAuth 2.0 "Authorization Code" flow helper used by app/google/oauth.py
+google-auth-httplib2==0.2.0         # Adapter so google-api-python-client can make HTTP calls using authorized credentials
+
+# --- Settings & validation ---
+pydantic==2.9.2               # Data validation/parsing used for API request/response schemas
+pydantic-settings==2.5.2      # Loads typed settings (app/config.py) from environment variables / .env file
+
+# --- Security ---
+python-jose[cryptography]==3.3.0   # Signs/verifies the session JWT issued after Google OAuth login
+cryptography==43.0.1                # Provides Fernet symmetric encryption used to encrypt OAuth tokens at rest in Postgres
+
+# --- Resilience ---
+tenacity==9.0.0               # Retry-with-backoff decorator used when calling flaky Google APIs
+
+# --- Dev/runtime utilities ---
+python-dotenv==1.0.1           # Loads variables from a local .env file into the process environment
+python-multipart==0.0.9        # Required by FastAPI/Starlette to parse multipart form bodies (OAuth callback query handling safety net)
+
+# --- Testing ---
+pytest==8.3.3                  # Test runner
+pytest-asyncio==0.24.0         # Lets pytest run `async def test_...` coroutines (our orchestrator/executor is async)
+pytest-mock==3.14.0            # Convenient `mocker` fixture for patching OpenAI/Google clients in tests
+httpx==0.27.2                  # HTTP client used by FastAPI's TestClient/AsyncClient in integration tests
+fakeredis==2.24.1              # In-memory Redis stand-in so cache/rate-limit/conversation tests don't need a real Redis server

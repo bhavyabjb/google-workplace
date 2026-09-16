@@ -1,0 +1,457 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agentic Google Workspace Orchestrator",
+    "description": "Natural-language orchestration across Gmail, Calendar, and Drive.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/auth/google": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start Google Oauth",
+        "description": "Redirect the browser to Google's consent screen.",
+        "operationId": "start_google_oauth_api_v1_auth_google_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Google Oauth Callback",
+        "description": "Google redirects here with `?code=...` after the user grants consent.\n\nExchanges the code for tokens, upserts the User row (tokens encrypted at rest -\nsee app/security.py), and returns a session JWT the client uses as a Bearer\ntoken on every subsequent /api/v1/* request.",
+        "operationId": "google_oauth_callback_api_v1_auth_google_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Google Oauth Callback Api V1 Auth Google Callback Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/query": {
+      "post": {
+        "tags": [
+          "query"
+        ],
+        "summary": "Query",
+        "operationId": "query_api_v1_query_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/trigger": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Trigger Sync",
+        "description": "Enqueue an immediate sync for the current user rather than waiting for the\nnext celery_beat tick (useful right after first login, or for the demo video).",
+        "operationId": "trigger_sync_api_v1_sync_trigger_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Trigger Sync Api V1 Sync Trigger Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/status": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Sync Status",
+        "operationId": "sync_status_api_v1_sync_status_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SyncStatusEntry"
+                  },
+                  "title": "Response Sync Status Api V1 Sync Status Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Health",
+        "description": "Liveness check for load balancers / docker-compose healthchecks.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Intent": {
+        "properties": {
+          "services": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "gmail",
+                "gcal",
+                "gdrive"
+              ]
+            },
+            "type": "array",
+            "title": "Services",
+            "description": "Which Google service(s) this query touches"
+          },
+          "intent": {
+            "type": "string",
+            "title": "Intent",
+            "description": "Short machine-readable intent label, e.g. 'cancel_flight'"
+          },
+          "entities": {
+            "type": "object",
+            "title": "Entities",
+            "description": "Extracted entities, e.g. {'airline': 'Turkish Airlines'}"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "Human-readable step names, e.g. ['search_gmail_for_booking', ...]"
+          },
+          "needs_clarification": {
+            "type": "boolean",
+            "title": "Needs Clarification",
+            "description": "True if the query is too ambiguous to safely execute (e.g. 'move the meeting with John')",
+            "default": false
+          },
+          "clarification_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Question",
+            "description": "Question to ask the user when needs_clarification is True"
+          }
+        },
+        "type": "object",
+        "required": [
+          "services",
+          "intent"
+        ],
+        "title": "Intent",
+        "description": "Structured output of the Intent Classifier (see app/orchestrator/intent_classifier.py).\n\nMirrors the JSON shape given in the assignment brief:\n{\"services\": [...], \"intent\": \"...\", \"entities\": {...}, \"steps\": [...]}"
+      },
+      "QueryRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "QueryRequest",
+        "description": "Body of POST /api/v1/query."
+      },
+      "QueryResponse": {
+        "properties": {
+          "response": {
+            "type": "string",
+            "title": "Response"
+          },
+          "actions_taken": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Actions Taken"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/Intent"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "response",
+          "actions_taken",
+          "intent",
+          "conversation_id"
+        ],
+        "title": "QueryResponse",
+        "description": "Response of POST /api/v1/query."
+      },
+      "SyncStatusEntry": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": [
+              "gmail",
+              "gcal",
+              "gdrive"
+            ],
+            "title": "Service"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ok",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service",
+          "last_synced_at",
+          "status"
+        ],
+        "title": "SyncStatusEntry"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+# Local dev stack for the orchestrator. Five containers, wired together so `docker compose up`
+# gives you a fully working system (Postgres+pgvector, Redis, the API, and the two Celery
+# processes that do background sync). All app containers share the repo via a bind mount so
+# code edits are picked up without rebuilding the image (uvicorn --reload / celery autoreload).
+version: "3.9"
+
+services:
+  # Postgres with the pgvector extension pre-installed (ankane/pgvector image = official
+  # postgres image + pgvector compiled in). Stores relational data (users, conversations)
+  # AND the embedding vectors for Gmail/Calendar/Drive items in the same tables.
+  postgres:
+    image: ankane/pgvector:v0.5.1
+    container_name: orchestrator_postgres
+    environment:
+      POSTGRES_USER: orchestrator
+      POSTGRES_PASSWORD: orchestrator
+      POSTGRES_DB: orchestrator
+    ports:
+      - "5432:5432"          # host:container - lets you connect with a local psql/DB client too
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # persists data across `docker compose down`/`up`
+    healthcheck:                           # other services wait on this before starting
+      test: ["CMD-SHELL", "pg_isready -U orchestrator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis: used for (1) response/embedding/intent-classification caching, (2) the
+  # per-user rate limiter (sliding counter), (3) Celery's broker + result backend.
+  redis:
+    image: redis:7-alpine
+    container_name: orchestrator_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The FastAPI application itself (see app/main.py). Handles all HTTP traffic:
+  # OAuth login, the /query orchestration endpoint, and manual sync triggers.
+  api:
+    build: .
+    container_name: orchestrator_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: .env             # reads OpenAI/Google/secret-key credentials from your local .env
+    # .env's DATABASE_URL/REDIS_URL/CELERY_* point at "localhost", which is correct for
+    # running the app directly on your host machine - but INSIDE this container
+    # "localhost" means the container itself, not the postgres/redis containers. These
+    # `environment:` entries override just those four vars with the Docker service
+    # names (Compose's built-in DNS), while everything else still comes from .env.
+    # (Compose applies `environment:` after `env_file:`, so these win on overlap.)
+    environment:
+      DATABASE_URL: postgresql+psycopg://orchestrator:orchestrator@postgres:5432/orchestrator
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app                 # bind mount so code changes hot-reload without a rebuild
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Celery worker: executes background jobs pulled off the Redis queue - mainly the
+  # periodic Gmail/Calendar/Drive sync task defined in app/tasks/sync_tasks.py.
+  celery_worker:
+    build: .
+    container_name: orchestrator_celery_worker
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    env_file: .env
+    environment:   # see the `api` service above for why these are overridden here too
+      DATABASE_URL: postgresql+psycopg://orchestrator:orchestrator@postgres:5432/orchestrator
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Celery beat: the scheduler process. It doesn't run jobs itself - it just enqueues
+  # the sync task on a timer (every SYNC_INTERVAL_MINUTES) for celery_worker to pick up.
+  celery_beat:
+    build: .
+    container_name: orchestrator_celery_beat
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    env_file: .env
+    environment:   # see the `api` service above for why these are overridden here too
+      DATABASE_URL: postgresql+psycopg://orchestrator:orchestrator@postgres:5432/orchestrator
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:   # named volume backing Postgres' data directory

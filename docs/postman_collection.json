@@ -1,0 +1,80 @@
+{
+  "info": {
+    "name": "Agentic Google Workspace Orchestrator",
+    "description": "Matches API.md at the repo root. Set the `base_url` and `session_token` collection variables (session_token comes from the /auth/google/callback response) before running requests other than the login redirect.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "session_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Start Google OAuth login",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/api/v1/auth/google", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "google"] },
+        "description": "Open this in a browser (not Postman's runner) to complete the interactive Google consent flow."
+      }
+    },
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "Query - single service (calendar)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{session_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/api/v1/query", "host": ["{{base_url}}"], "path": ["api", "v1", "query"] },
+        "body": { "mode": "raw", "raw": "{\"query\": \"What's on my calendar next week?\"}" }
+      }
+    },
+    {
+      "name": "Query - multi-service (cancel flight)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{session_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/api/v1/query", "host": ["{{base_url}}"], "path": ["api", "v1", "query"] },
+        "body": { "mode": "raw", "raw": "{\"query\": \"Cancel my Turkish Airlines flight\"}" }
+      }
+    },
+    {
+      "name": "Query - ambiguous (hard case)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{session_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{base_url}}/api/v1/query", "host": ["{{base_url}}"], "path": ["api", "v1", "query"] },
+        "body": { "mode": "raw", "raw": "{\"query\": \"Move the meeting with John\"}" }
+      }
+    },
+    {
+      "name": "Trigger manual sync",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{session_token}}" }],
+        "url": { "raw": "{{base_url}}/api/v1/sync/trigger", "host": ["{{base_url}}"], "path": ["api", "v1", "sync", "trigger"] }
+      }
+    },
+    {
+      "name": "Get sync status",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{session_token}}" }],
+        "url": { "raw": "{{base_url}}/api/v1/sync/status", "host": ["{{base_url}}"], "path": ["api", "v1", "sync", "status"] }
+      }
+    }
+  ]
+}

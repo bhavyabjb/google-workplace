@@ -1,0 +1,22 @@
+[
+  {
+    "service": "gmail",
+    "query": "Turkish Airlines booking confirmation",
+    "relevant_ids": ["REPLACE_WITH_A_REAL_SYNCED_GMAIL_MESSAGE_ID"]
+  },
+  {
+    "service": "gmail",
+    "query": "budget discussion with Sarah",
+    "relevant_ids": ["REPLACE_WITH_A_REAL_SYNCED_GMAIL_MESSAGE_ID"]
+  },
+  {
+    "service": "gcal",
+    "query": "client meeting with Acme Corp",
+    "relevant_ids": ["REPLACE_WITH_A_REAL_SYNCED_CALENDAR_EVENT_ID"]
+  },
+  {
+    "service": "gdrive",
+    "query": "Q3 financial report",
+    "relevant_ids": ["REPLACE_WITH_A_REAL_SYNCED_DRIVE_FILE_ID"]
+  }
+]
