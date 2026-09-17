@@ -5,7 +5,7 @@ uvicorn[standard]==0.30.6   # ASGI server that actually runs the FastAPI app
 # --- Database (Postgres + pgvector) ---
 sqlalchemy==2.0.35          # ORM + query builder used for all Postgres access (models, sessions, raw SQL for vector search)
 alembic==1.13.2             # Database migration tool that tracks/applies schema changes (alembic/versions/*.py)
-psycopg[binary]==3.2.1      # PostgreSQL driver (the actual TCP/wire client SQLAlchemy talks through)
+psycopg[binary]==3.2.13     # PostgreSQL driver (the actual TCP/wire client SQLAlchemy talks through)
 pgvector==0.3.4             # SQLAlchemy/psycopg integration for Postgres' pgvector extension (vector(1536) columns, cosine distance)
 
 # --- Cache & background jobs ---
@@ -35,6 +35,9 @@ tenacity==9.0.0               # Retry-with-backoff decorator used when calling f
 # --- Dev/runtime utilities ---
 python-dotenv==1.0.1           # Loads variables from a local .env file into the process environment
 python-multipart==0.0.9        # Required by FastAPI/Starlette to parse multipart form bodies (OAuth callback query handling safety net)
+
+# --- UI (optional) ---
+streamlit==1.38.0             # Local UI (streamlit_app.py): drives Google login + the query/sync API from a browser
 
 # --- Testing ---
 pytest==8.3.3                  # Test runner

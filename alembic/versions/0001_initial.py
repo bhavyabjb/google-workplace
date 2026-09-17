@@ -9,10 +9,10 @@ Create Date: 2026-09-17
 """
 from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-from pgvector.sqlalchemy import Vector
+from alembic import op # operations object controls the db changes
+import sqlalchemy as sa # describes database objects/types
+from sqlalchemy.dialects import postgresql # gives PostgreSQL-specific types/features
+from pgvector.sqlalchemy import Vector # describes the embedding column
 
 # revision identifiers, used by Alembic.
 revision: str = "0001"

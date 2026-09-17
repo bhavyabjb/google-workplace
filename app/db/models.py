@@ -98,12 +98,12 @@ class GmailCache(Base):
         # Approximate-nearest-neighbor index for cosine similarity search over `embedding`.
         # ivfflat trades a little recall for large speedups at scale vs. exact scan.
         Index(
-            "ix_gmail_embedding", "embedding",
+           "ix_gmail_embedding", "embedding",
             postgresql_using="ivfflat",
             postgresql_with={"lists": 100},
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
-    )
+    ) 
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)

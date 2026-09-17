@@ -17,6 +17,12 @@ Prompt-engineering choices (this is called out in the brief as "critical"):
   question) rather than guess when a query is genuinely ambiguous (e.g. "move the
   meeting with John" with two Johns on the calendar) - this is what turns a "hard
   case" from a wrong silent action into a safe clarifying question.
+- Write actions ("actions" in the output shape) are decided HERE, by the model, not
+  reconstructed later from free text. The Query Planner (app/orchestrator/planner.py)
+  used to keyword-match words like "cancel"/"move" out of the intent label, but the
+  same word means different things per service (see the SERVICE_VERBS rule below) and
+  free text is unbounded - the model already resolves that ambiguity when it reads
+  the query, so it records the decision directly instead of the planner re-guessing it.
 """
 
 import json
@@ -25,14 +31,13 @@ import json
 import hashlib
 # hashlib: builds a short Redis cache key from the (query + context) pair.
 
-from openai import OpenAI
-
 from app.cache.redis_client import get_redis
 from app.config import get_settings
+from app.llm_client import build_openai_client, parse_json_response
 from app.schemas import Intent
 
 settings = get_settings()
-_client = OpenAI(api_key=settings.openai_api_key)
+_client = build_openai_client()
 
 INTENT_CACHE_TTL_SECONDS = 3600  # matches the brief's "intent classifications" caching hint
 
@@ -45,6 +50,7 @@ Given a user query, return ONLY a JSON object with this exact shape:
   "intent": "short_snake_case_label",
   "entities": {"key": "value", ...},
   "steps": ["step_name", ...],
+  "actions": [{"service": "gmail" | "gcal" | "gdrive", "verb": "...", "needs_context_from": ["gmail" | "gcal" | "gdrive", ...]}, ...],
   "needs_clarification": false,
   "clarification_question": null
 }
@@ -54,12 +60,36 @@ Rules:
   common when one service's result is needed to act on another (e.g. finding a
   booking email, then finding the matching calendar event).
 - "steps" should be short, ordered, human-readable step names describing what the
-  orchestrator will do (e.g. "search_gmail_for_booking", "find_calendar_event").
+  orchestrator will do (e.g. "search_gmail_for_booking", "find_calendar_event") -
+  this is for human readability only; it has no effect on what actually runs.
+- "actions" lists every WRITE (mutating) step to perform. Leave it an empty list for
+  read-only queries (searching/listing/summarizing - nothing to write). Each action's
+  "service" must also appear in "services". Each action's "verb" MUST be one of the
+  following - never invent a verb, and never pair a verb with a service that doesn't
+  support it:
+    - gmail: "draft" (Gmail ALWAYS drafts, never sends automatically - the user
+      confirms and sends it themselves. Use "draft" for send/compose/cancel-by-email
+      requests alike.)
+    - gcal: "create", "update", "reschedule", "delete"
+    - gdrive: "share", "move"
+  "needs_context_from" lists which services' search/context results this action
+  needs before it can run (usually just its own service, but can include others -
+  e.g. a flight-cancellation email needs both the Gmail booking AND the Calendar
+  event, so needs_context_from: ["gmail", "gcal"]).
+- Disambiguating verbs that could mean different things:
+    - "cancel"/"remove" applied to something with an associated email or booking
+      (a flight, hotel, order, reservation) -> {"service": "gmail", "verb": "draft"}
+      (draft a cancellation email; never touch the calendar event directly).
+    - "cancel"/"remove" applied to a plain calendar event/meeting with no booking or
+      email involved -> {"service": "gcal", "verb": "delete"}.
+    - Changing a calendar event's time ("move it to 3pm", "reschedule", "push back")
+      -> {"service": "gcal", "verb": "reschedule"}. Only use gdrive's "move" verb for
+      relocating a Drive file between folders - never for calendar time changes.
 - If the query is genuinely ambiguous and cannot be safely executed as-is (e.g. it
   references a person/thing that could match multiple items, with no way to
   disambiguate from the query or recent conversation context), set
-  "needs_clarification" to true and provide a specific "clarification_question".
-  Do not guess.
+  "needs_clarification" to true, provide a specific "clarification_question", and
+  leave "actions" empty. Do not guess.
 - Resolve relative time expressions ("tomorrow", "next week", "next Tuesday") using
   the CURRENT_DATETIME and USER_TIMEZONE given below, and put the resolved
   ISO 8601 date/range into "entities".
@@ -69,16 +99,22 @@ Rules:
 Examples:
 
 Query: "Cancel my Turkish Airlines flight"
-{"services": ["gmail", "gcal"], "intent": "cancel_flight", "entities": {"airline": "Turkish Airlines"}, "steps": ["search_gmail_for_booking", "find_calendar_event", "draft_cancellation_email"], "needs_clarification": false, "clarification_question": null}
+{"services": ["gmail", "gcal"], "intent": "cancel_flight", "entities": {"airline": "Turkish Airlines"}, "steps": ["search_gmail_for_booking", "find_calendar_event", "draft_cancellation_email"], "actions": [{"service": "gmail", "verb": "draft", "needs_context_from": ["gmail", "gcal"]}], "needs_clarification": false, "clarification_question": null}
+
+Query: "Cancel my 3pm meeting tomorrow"
+{"services": ["gcal"], "intent": "cancel_event", "entities": {"date": "<tomorrow's ISO date, resolved from CURRENT_DATETIME>", "time": "15:00"}, "steps": ["find_calendar_event", "delete_calendar_event"], "actions": [{"service": "gcal", "verb": "delete", "needs_context_from": ["gcal"]}], "needs_clarification": false, "clarification_question": null}
 
 Query: "Prepare for tomorrow's client meeting with Acme Corp"
-{"services": ["gcal", "gmail", "gdrive"], "intent": "prepare_for_meeting", "entities": {"client": "Acme Corp", "date": "<tomorrow's ISO date, resolved from CURRENT_DATETIME>"}, "steps": ["find_calendar_event", "search_emails_with_client", "pull_drive_documents"], "needs_clarification": false, "clarification_question": null}
+{"services": ["gcal", "gmail", "gdrive"], "intent": "prepare_for_meeting", "entities": {"client": "Acme Corp", "date": "<tomorrow's ISO date, resolved from CURRENT_DATETIME>"}, "steps": ["find_calendar_event", "search_emails_with_client", "pull_drive_documents"], "actions": [], "needs_clarification": false, "clarification_question": null}
 
 Query: "What's on my calendar next week where john@company.com is invited?"
-{"services": ["gcal"], "intent": "list_events_by_attendee", "entities": {"attendee": "john@company.com", "date_range": "<next week's ISO start/end, resolved from CURRENT_DATETIME>"}, "steps": ["search_calendar", "filter_by_attendee", "return_formatted_list"], "needs_clarification": false, "clarification_question": null}
+{"services": ["gcal"], "intent": "list_events_by_attendee", "entities": {"attendee": "john@company.com", "date_range": "<next week's ISO start/end, resolved from CURRENT_DATETIME>"}, "steps": ["search_calendar", "filter_by_attendee", "return_formatted_list"], "actions": [], "needs_clarification": false, "clarification_question": null}
 
 Query: "Move the meeting with John"
-{"services": ["gcal"], "intent": "reschedule_event", "entities": {"attendee_hint": "John"}, "steps": [], "needs_clarification": true, "clarification_question": "You have multiple meetings with people named John. Which meeting, and what new time?"}
+{"services": ["gcal"], "intent": "reschedule_event", "entities": {"attendee_hint": "John"}, "steps": [], "actions": [], "needs_clarification": true, "clarification_question": "You have multiple meetings with people named John. Which meeting, and what new time?"}
+
+Query: "Move the Q3 budget spreadsheet to my Finance folder"
+{"services": ["gdrive"], "intent": "move_file", "entities": {"doc_name": "Q3 budget spreadsheet", "target_folder": "Finance"}, "steps": ["search_drive_for_file", "move_file_to_folder"], "actions": [{"service": "gdrive", "verb": "move", "needs_context_from": ["gdrive"]}], "needs_clarification": false, "clarification_question": null}
 """
 
 
@@ -121,7 +157,7 @@ def classify_intent(query: str, conversation_context: list[dict], user_timezone:
     )
 
     raw = response.choices[0].message.content
-    intent = Intent.model_validate(json.loads(raw))
+    intent = Intent.model_validate(parse_json_response(raw))
 
     redis.set(cache_key, intent.model_dump_json(), ex=INTENT_CACHE_TTL_SECONDS)
     return intent

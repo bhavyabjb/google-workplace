@@ -6,10 +6,13 @@ and the callback Google redirects back to with a `code`. We expose both under th
 `/auth/google` prefix so the pair reads as one logical "OAuth flow" from outside.
 """
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.session import get_db
 from app.google.oauth import build_auth_url, exchange_code_for_tokens, upsert_user_from_credentials
 from app.security import create_session_token
@@ -23,13 +26,17 @@ def start_google_oauth() -> RedirectResponse:
     return RedirectResponse(build_auth_url())
 
 
-@router.get("/callback")
-def google_oauth_callback(code: str, db: Session = Depends(get_db)) -> dict:
+@router.get("/callback", response_model=None)
+def google_oauth_callback(code: str, db: Session = Depends(get_db)) -> dict | RedirectResponse:
     """Google redirects here with `?code=...` after the user grants consent.
 
     Exchanges the code for tokens, upserts the User row (tokens encrypted at rest -
     see app/security.py), and returns a session JWT the client uses as a Bearer
     token on every subsequent /api/v1/* request.
+
+    If FRONTEND_REDIRECT_URL is configured, hands the token to that URL as query
+    params instead (e.g. the Streamlit UI reads it from st.query_params) - otherwise
+    returns it as plain JSON, unchanged for direct API/Swagger use.
     """
     credentials = exchange_code_for_tokens(code)
 
@@ -42,6 +49,11 @@ def google_oauth_callback(code: str, db: Session = Depends(get_db)) -> dict:
 
     user = upsert_user_from_credentials(db, email, credentials)
     session_token = create_session_token(str(user.id))
+
+    frontend_redirect_url = get_settings().frontend_redirect_url
+    if frontend_redirect_url:
+        params = urlencode({"session_token": session_token, "user_id": str(user.id), "email": user.email})
+        return RedirectResponse(f"{frontend_redirect_url}?{params}")
 
     return {"session_token": session_token, "user_id": str(user.id), "email": user.email}
 

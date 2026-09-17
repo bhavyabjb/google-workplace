@@ -11,13 +11,12 @@ of the brief's example:
 
 import json
 
-from openai import OpenAI
-
 from app.config import get_settings
+from app.llm_client import build_openai_client, parse_json_response
 from app.schemas import Intent, NodeResult
 
 settings = get_settings()
-_client = OpenAI(api_key=settings.openai_api_key)
+_client = build_openai_client()
 
 SYSTEM_PROMPT = """You are the response synthesizer for a Google Workspace orchestrator.
 You are given the user's original query, the classified intent, and the raw results of
@@ -58,5 +57,5 @@ def synthesize_response(original_query: str, intent: Intent, results: dict[str, 
         ],
     )
 
-    parsed = json.loads(response.choices[0].message.content)
+    parsed = parse_json_response(response.choices[0].message.content)
     return parsed.get("response", ""), parsed.get("actions_taken", [])

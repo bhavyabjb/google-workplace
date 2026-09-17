@@ -5,18 +5,17 @@ brief's "Gmail: search_emails, get_email, send_email, draft_email, update_labels
 
 from typing import Any
 
-from openai import OpenAI
-
 from app.config import get_settings
 from app.embeddings.embedder import embed_text
 from app.embeddings.search import search_gmail
 from app.google.gmail_client import GmailClient
 from app.google.oauth import get_credentials_for_user
+from app.llm_client import build_openai_client
 from app.orchestrator.agents.base import ServiceAgent
 from app.orchestrator.audit import record_action
 
 settings = get_settings()
-_openai = OpenAI(api_key=settings.openai_api_key)
+_openai = build_openai_client()
 
 
 class GmailAgent(ServiceAgent):

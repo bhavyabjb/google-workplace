@@ -1,6 +1,6 @@
 # Single shared Redis connection (connection-pooled internally by redis-py), reused
 # across the embedding cache, rate limiter, and conversation-context store so we don't
-# open a new TCP connection per call.
+# open a new connection per call.
 
 from functools import lru_cache
 # lru_cache: makes get_redis() a memoized singleton, same pattern as app.config.get_settings.

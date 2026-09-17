@@ -32,11 +32,16 @@ class Settings(BaseSettings):
     database_url: str        # SQLAlchemy connection string (Postgres + pgvector)
     redis_url: str           # cache + rate limiter
 
-    # --- OpenAI ---
+    # --- OpenAI (or an OpenAI-compatible provider) ---
     openai_api_key: str
+    # If set, points the OpenAI SDK at a different OpenAI-compatible endpoint instead
+    # of api.openai.com - e.g. Gemini's https://ai.google.dev/gemini-api/docs/openai
+    # (base_url "https://generativelanguage.googleapis.com/v1beta/openai/"). See
+    # app/llm_client.py for where this is actually used and why it's centralized there.
+    openai_base_url: str | None = None
     openai_chat_model: str = "gpt-4o-mini"                 # intent classification + response synthesis
     openai_embedding_model: str = "text-embedding-3-small"  # email/event/file embeddings
-    embedding_dimensions: int = 1536                        # must match the `vector(N)` columns in app/db/models.py
+    embedding_dimensions: int = 1536                        # must match the `vector(N)` columns in app/db/models.py - keep this at 1536 (embedder.py requests truncated output at this size from any provider) unless you also write a migration to resize the columns, and note pgvector's ivfflat/hnsw indexes cap out at 2000 dims regardless
 
     # --- Google OAuth ---
     google_client_id: str
@@ -46,6 +51,13 @@ class Settings(BaseSettings):
 
     # --- Rate limiting ---
     queries_per_user_per_hour: int = 100
+
+    # --- Frontend (optional) ---
+    # If set, the OAuth callback redirects here with the session token as query
+    # params instead of returning it as raw JSON - lets a UI (e.g. the Streamlit
+    # app) complete login without the user copy-pasting a token by hand. Leave unset
+    # and the callback keeps returning JSON directly, unchanged for API/Swagger use.
+    frontend_redirect_url: str | None = None
 
     # --- Celery / background sync ---
     celery_broker_url: str

@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+myenv/
 *.egg-info/
 
 # Secrets - must never be committed (see .env.example for the template that IS committed)
@@ -18,7 +19,12 @@ htmlcov/
 .DS_Store
 *.log
 
-# Celery beat's local schedule-tracking file (written next to wherever `celery beat`
-# runs - lands in the repo root because docker-compose bind-mounts the repo into the
-# celery_beat container).
+# Celery beat's local schedule-tracking file (SQLite shm/wal are its write-ahead-log
+# siblings) - written next to wherever `celery beat` runs, lands in the repo root
+# because docker-compose bind-mounts the repo into the celery_beat container.
 celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+# Unrelated local files that don't belong in the repo
+Assignment 10-30 Foresight.pdf
