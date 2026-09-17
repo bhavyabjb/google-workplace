@@ -11,8 +11,8 @@ which module handles which case.
 ## Single-service
 
 ### 1. "What's on my calendar next week?"
-- **Intent:** `{"services": ["gcal"], "intent": "list_events_by_date_range", "entities": {"date_range": {...resolved from CURRENT_DATETIME...}}}`
-- **Plan:** generic fallback - one `search` node on `gcal` (`app/orchestrator/planner.py:_generic_plan`).
+- **Intent:** `{"services": ["gcal"], "intent": "list_events_by_date_range", "entities": {"date_range": {...resolved from CURRENT_DATETIME...}}, "actions": []}`
+- **Plan:** `build_plan` (`app/orchestrator/planner.py`) builds a `search_gcal` + `context_gcal` pair for every service in `services` - here just `gcal`. No `actions` were given, so no `execute` node.
 - **Execution:** `GCalAgent.search` resolves the date range (`_resolve_date_range`) and, since there's no semantic hint in the entities, skips the embedding call entirely and just filters+sorts by `start_time` (`app/embeddings/search.py:search_gcal`) - a pure metadata query.
 - **Expected response:** a plain-language list of events with times, no vector search overhead.
 
@@ -31,24 +31,24 @@ which module handles which case.
 ## Multi-service
 
 ### 4. "Cancel my Turkish Airlines flight"
-- **Intent:** `{"services": ["gmail", "gcal"], "intent": "cancel_flight", "entities": {"airline": "Turkish Airlines"}}`
-- **Plan:** the named template `_plan_cancel_flight` - `search_gmail` and `search_gcal` run in parallel, `context_gmail` fetches the full booking email, then `draft_cancellation_email` (depends on both) drafts (not sends) a cancellation email via `GmailAgent.execute`.
+- **Intent:** `{"services": ["gmail", "gcal"], "intent": "cancel_flight", "entities": {"airline": "Turkish Airlines"}, "actions": [{"service": "gmail", "verb": "draft", "needs_context_from": ["gmail", "gcal"]}]}` - the classifier decides the write action directly (see `Action` in `app/schemas.py`) rather than the planner inferring it from the word "cancel."
+- **Plan:** `build_plan` creates `search_gmail`/`context_gmail` and `search_gcal`/`context_gcal` in parallel (one pair per service in `services`), then one `execute_draft_gmail` node depending on both `context_gmail` and `context_gcal` (from the action's `needs_context_from`) - it drafts (not sends) a cancellation email via `GmailAgent.execute`.
 - **Expected response** (matches the brief's own example):
   > I found your Turkish Airlines booking (TK1234) in an email from Oct 15.
   > ✓ Calendar event "Istanbul → NYC Flight" on Nov 5 at 10:30 AM
   > ✓ Drafted cancellation email to support@turkishairlines.com
   >
   > Would you like me to send it?
-- Note the email is **drafted, not sent** - `GmailAgent.execute` only implements the `draft` verb; an explicit follow-up query (or a `send_email` verb, not yet wired to any intent template) would be needed to actually send it. This is a deliberate safety choice, not a gap: irreversible actions get a confirmation step.
+- Note the email is **drafted, not sent** - `GmailAgent.execute` only ever implements the `draft` verb (see `SERVICE_VERBS` in `app/schemas.py`); sending would need an explicit follow-up query and confirmation. This is a deliberate safety choice, not a gap: irreversible actions get a confirmation step.
 
 ### 5. "Prepare for tomorrow's meeting with Acme Corp"
-- **Intent:** `{"services": ["gcal", "gmail", "gdrive"], "intent": "prepare_for_meeting", "entities": {"client": "Acme Corp", "date": "<tomorrow>"}}`
-- **Plan:** `_plan_prepare_for_meeting` - `find_calendar_event` runs first, `context_gcal` fetches attendee emails, and only then do `search_emails_with_client` and `pull_drive_documents` run (in parallel with each other) - they need the attendee list from the calendar event to search accurately, which is why they depend on `context_gcal` rather than running independently.
+- **Intent:** `{"services": ["gcal", "gmail", "gdrive"], "intent": "prepare_for_meeting", "entities": {"client": "Acme Corp", "date": "<tomorrow>"}, "actions": []}` - purely read-only, so no actions.
+- **Plan:** `build_plan` creates a `search`+`context` pair for all three services, **run fully in parallel with no cross-service ordering** - `search_gmail`/`search_gdrive` do NOT wait on `context_gcal` to resolve attendee emails first. This is a known tradeoff of the fully-generic planner (see the module docstring in `app/orchestrator/planner.py`): an earlier version hand-sequenced this specific case, but that doesn't generalize to arbitrary intents, so the current planner treats every service's search as independent. A more complete fix would have the classifier emit explicit read-ordering, not just write actions.
 - **Expected response:** a synthesized brief combining the meeting time/attendees, relevant email thread(s), and any matching Drive docs.
 
 ### 6. "Find events next week that conflict with my out-of-office doc"
-- **Intent:** `{"services": ["gcal", "gdrive"], "intent": "find_conflicting_events", "entities": {"date_range": "<next week>", "doc_name": "out-of-office"}}`
-- **Plan:** generic fallback - parallel `search_gcal` + `search_gdrive` (no write verb detected, so no execute node).
+- **Intent:** `{"services": ["gcal", "gdrive"], "intent": "find_conflicting_events", "entities": {"date_range": "<next week>", "doc_name": "out-of-office"}, "actions": []}` - purely read-only.
+- **Plan:** `build_plan` creates parallel `search_gcal`/`context_gcal` + `search_gdrive`/`context_gdrive`; no `actions` given, so no `execute` node.
 - **Execution:** `DriveAgent.search` finds the out-of-office doc; `GCalAgent.search` lists next week's events. Conflict detection itself (comparing the OOO date range against event times) happens in the Response Synthesizer's prompt, which is given both raw result sets and asked to identify overlaps - see the "Bonus: Conflict detection" note in DESIGN.md/README for why this is prompt-based rather than a separate deterministic step in this version.
 
 ---
@@ -71,13 +71,13 @@ which module handles which case.
 ## Additional edge cases
 
 ### 10. "What's on my calendar next week where john@company.com is invited?"
-- **Intent:** `{"services": ["gcal"], "intent": "list_events_by_attendee", "entities": {"attendee": "john@company.com", "date_range": "<next week>"}}`
-- **Plan:** the named template `_plan_list_events_by_attendee` - a single `search` node.
+- **Intent:** `{"services": ["gcal"], "intent": "list_events_by_attendee", "entities": {"attendee": "john@company.com", "date_range": "<next week>"}, "actions": []}`
+- **Plan:** `build_plan` creates `search_gcal` + `context_gcal`. Note the current generic planner always builds a context node per service, even for a "list many things" query where zooming into just the top hit isn't that useful - a minor, accepted inefficiency (one extra live Calendar API call) versus the old hand-written template, which specifically omitted it for this case.
 - **Execution:** `search_gcal` applies BOTH the date-range filter AND a JSONB `@>` containment filter on `attendees` (`app/embeddings/search.py`) before returning - two cheap metadata filters, no vector ranking needed at all.
 
 ### 11. "Share the Q3 report with john@company.com"
-- **Intent:** `{"services": ["gdrive"], "intent": "share_q3_report", "entities": {"doc_name": "Q3 report", "share_with": "john@company.com"}}`
-- **Plan:** generic fallback detects the write verb `"share"` in the intent label -> `search_gdrive` + `context_gdrive` (finds the file) then an `execute` node on `gdrive` with `verb="share"`.
+- **Intent:** `{"services": ["gdrive"], "intent": "share_q3_report", "entities": {"doc_name": "Q3 report", "share_with": "john@company.com"}, "actions": [{"service": "gdrive", "verb": "share", "needs_context_from": ["gdrive"]}]}` - the classifier names the write action directly instead of the planner keyword-matching "share" out of the intent label.
+- **Plan:** `build_plan` creates `search_gdrive` + `context_gdrive` (finds the file), then `execute_share_gdrive` depending on `context_gdrive`.
 - **Execution:** `DriveAgent.execute` resolves the target file id from `upstream_context`, calls `DriveClient.share_file`, and records the grant in `audit_log` regardless of outcome.
 
 ### 12. Rate limit exceeded

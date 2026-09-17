@@ -118,6 +118,11 @@ invalidated) rather than needing a busting mechanism.
 
 ## 5. Database schema (see `app/db/models.py`, `alembic/versions/0001_initial.py`)
 
+(`alembic/versions/0002_reset_embedding_cache_for_provider_switch.py` doesn't change
+this schema - it just truncates the `*_cache` tables and clears `sync_status` when
+switching the configured embedding model/provider, since an embedding from one model
+isn't comparable to one from another even at the same vector dimension.)
+
 Extends the brief's simplified schema with `gcal_cache`/`gdrive_cache` (the "similar
 tables" it gestures at), `sync_status` (backs `GET /sync/status`), and `audit_log`
 (backs the "Security: audit logging" requirement). Every `*_cache` table:
